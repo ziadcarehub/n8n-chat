@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --text: #1f2430; --muted: #6b7280;
+    --border: #e2e5ea; --user: #4f46e5; --user-text: #ffffff;
+    --bot: #eef0f4; --accent: #4f46e5; --error: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12141a; --panel: #1b1e27; --text: #e8eaf0; --muted: #9aa1b0;
+      --border: #2b303c; --bot: #262a36;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); display: flex; justify-content: center;
+  }
+  .app {
+    width: 100%; max-width: 760px; height: 100%; display: flex; flex-direction: column;
+    background: var(--panel); border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+  }
+  header {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  header h1 { font-size: 16px; margin: 0; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); padding: 6px 12px;
+  }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg {
+    max-width: 82%; padding: 9px 13px; border-radius: 14px; line-height: 1.45;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .msg.user { align-self: flex-end; background: var(--user); color: var(--user-text); border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--bot); border-bottom-left-radius: 4px; }
+  .msg.error { align-self: flex-start; background: transparent; color: var(--error); border: 1px solid var(--error); font-size: 14px; }
+  .msg.system { align-self: center; color: var(--muted); font-size: 13px; background: transparent; text-align: center; }
+  .typing span {
+    display: inline-block; width: 7px; height: 7px; margin: 0 2px; border-radius: 50%;
+    background: var(--muted); animation: blink 1.2s infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: .2s; }
+  .typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+  textarea {
+    flex: 1; resize: none; font: inherit; padding: 9px 12px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text); max-height: 140px;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1 id="title">Chat</h1>
+    <button id="clearBtn" type="button">New chat</button>
+  </header>
+  <main id="messages" aria-live="polite"></main>
+  <form id="form">
+    <textarea id="input" rows="1" placeholder="Type a message..." required></textarea>
+    <button class="primary" id="sendBtn" type="submit">Send</button>
+  </form>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    title: $("title"), messages: $("messages"), form: $("form"),
+    input: $("input"), send: $("sendBtn")
+  };
+  let config = null;
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+
+  function newSession() {
+    const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
+    store.set("chat_session", id);
+    return id;
+  }
+  let sessionId = store.get("chat_session") || newSession();
+
+  function addMsg(text, cls) {
+    const d = document.createElement("div");
+    d.className = "msg " + cls;
+    d.textContent = text;
+    el.messages.appendChild(d);
+    el.messages.scrollTop = el.messages.scrollHeight;
+    return d;
+  }
+  function addTyping() {
+    const d = document.createElement("div");
+    d.className = "msg bot typing";
+    d.innerHTML = "<span></span><span></span><span></span>";
+    el.messages.appendChild(d);
+    el.messages.scrollTop = el.messages.scrollHeight;
+    return d;
+  }
+
+  function extractReply(data, preferred) {
+    if (data == null) return "";
+    if (typeof data === "string") return data;
+    if (Array.isArray(data)) return data.map((x) => extractReply(x, preferred)).filter(Boolean).join("\n");
+    if (typeof data === "object") {
+      const keys = [preferred, "response", "output", "text", "reply", "message", "answer", "content"].filter(Boolean);
+      const lower = {};
+      Object.keys(data).forEach((key) => { lower[key.toLowerCase()] = key; });
+      for (const k of keys) {
+        const real = lower[String(k).toLowerCase()];
+        if (real !== undefined && data[real] != null && data[real] !== "") {
+          return extractReply(data[real], preferred);
+        }
+      }
+      return JSON.stringify(data, null, 2);
+    }
+    return String(data);
+  }
+
+  async function loadConfig() {
+    try {
+      const res = await fetch("config.json", { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      config = await res.json();
+    } catch (e) {
+      config = null;
+    }
+    if (config && config.title) { el.title.textContent = config.title; document.title = config.title; }
+    if (config && config.placeholder) el.input.placeholder = config.placeholder;
+    if (!config || !config.webhookUrl) {
+      addMsg("This chat has not been configured yet. Please contact the administrator.", "error");
+      el.send.disabled = true;
+    } else {
+      addMsg((config.welcome || "Hi! How can I help you?"), "bot");
+    }
+  }
+
+  async function sendMessage(text) {
+    addMsg(text, "user");
+    const typing = addTyping();
+    el.send.disabled = true;
+
+    const msgField = config.messageField || "message";
+    const payload = { [msgField]: text, sessionId: sessionId };
+    const headers = {};
+    if (config.authHeader) headers["Authorization"] = config.authHeader;
+    const method = (config.method || "POST").toUpperCase();
+
+    let reqUrl = config.webhookUrl;
+    const opts = { method, headers };
+    if (method === "GET") {
+      const u = new URL(reqUrl);
+      Object.entries(payload).forEach(([k, v]) => u.searchParams.set(k, v));
+      reqUrl = u.toString();
+    } else {
+      headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(payload);
+    }
+
+    try {
+      const res = await fetch(reqUrl, opts);
+      const raw = await res.text();
+      typing.remove();
+      if (!res.ok) { addMsg("Sorry, something went wrong (error " + res.status + ").", "error"); return; }
+      let data = raw;
+      try { data = JSON.parse(raw); } catch (e) {}
+      addMsg(extractReply(data, config.replyField) || "(empty response)", "bot");
+    } catch (err) {
+      typing.remove();
+      addMsg("Sorry, I could not reach the server. Please try again later.", "error");
+    } finally {
+      el.send.disabled = false;
+      el.input.focus();
+    }
+  }
+
+  $("clearBtn").addEventListener("click", () => {
+    el.messages.innerHTML = "";
+    sessionId = newSession();
+    if (config && config.webhookUrl) addMsg((config.welcome || "Hi! How can I help you?"), "bot");
+  });
+  el.form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = el.input.value.trim();
+    if (!text || !config || !config.webhookUrl) return;
+    el.input.value = "";
+    el.input.style.height = "auto";
+    sendMessage(text);
+  });
+  el.input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); el.form.requestSubmit(); }
+  });
+  el.input.addEventListener("input", () => {
+    el.input.style.height = "auto";
+    el.input.style.height = Math.min(el.input.scrollHeight, 140) + "px";
+  });
+
+  loadConfig();
+})();
+</script>
+</body>
+</html>

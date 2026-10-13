@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Chat Admin</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --text: #1f2430; --muted: #6b7280;
+    --border: #e2e5ea; --accent: #4f46e5; --ok: #16a34a; --error: #dc2626; --code: #eef0f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12141a; --panel: #1b1e27; --text: #e8eaf0; --muted: #9aa1b0; --border: #2b303c; --code: #262a36; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); padding: 24px 16px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; display: grid; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  p, .hint { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 4px 0; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 3px; }
+  input, select, textarea {
+    width: 100%; font: inherit; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 520px) { .row { grid-template-columns: 1fr; } }
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); padding: 8px 14px;
+  }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  pre {
+    background: var(--code); border-radius: 8px; padding: 10px; font-size: 12px;
+    overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; max-height: 240px;
+  }
+  .ok { color: var(--ok); } .err { color: var(--error); }
+  ol { margin: 6px 0 0 18px; padding: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>Chat Admin</h1>
+    <p>Set up the webhook, test it, then download <code>config.json</code> and upload it to your GitHub repo. The chat page (<a href="index.html">index.html</a>) reads that file.</p>
+  </div>
+
+  <div class="card">
+    <h2>Configuration</h2>
+    <label for="webhookUrl">Webhook URL (Production URL from n8n)</label>
+    <input id="webhookUrl" type="url" placeholder="https://your-n8n.com/webhook/xxxx" autocomplete="off">
+
+    <div class="row">
+      <div>
+        <label for="title">Chat title</label>
+        <input id="title" value="Chat">
+      </div>
+      <div>
+        <label for="placeholder">Input placeholder</label>
+        <input id="placeholder" value="Type a message...">
+      </div>
+    </div>
+
+    <label for="welcome">Welcome message</label>
+    <input id="welcome" value="Hi! How can I help you?">
+
+    <div class="row">
+      <div>
+        <label for="messageField">Message field name (sent to n8n)</label>
+        <input id="messageField" value="message">
+      </div>
+      <div>
+        <label for="replyField">Reply field name (from n8n)</label>
+        <input id="replyField" value="Response">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="method">Method</label>
+        <select id="method"><option>POST</option><option>GET</option></select>
+      </div>
+      <div>
+        <label for="authHeader">Authorization header (optional)</label>
+        <input id="authHeader" placeholder="Bearer xxxx" autocomplete="off">
+      </div>
+    </div>
+    <p class="hint">Anything in <code>config.json</code> is public, including the webhook URL and any auth header. See the note in the chat with Claude about protecting the workflow in n8n.</p>
+  </div>
+
+  <div class="card">
+    <h2>Test</h2>
+    <label for="testMsg">Test message</label>
+    <input id="testMsg" value="Hello">
+    <div class="actions">
+      <button class="primary" id="testBtn" type="button">Send test</button>
+    </div>
+    <div id="testStatus" class="hint"></div>
+    <pre id="testOut" hidden></pre>
+  </div>
+
+  <div class="card">
+    <h2>Publish</h2>
+    <div class="actions">
+      <button class="primary" id="downloadBtn" type="button">Download config.json</button>
+      <button id="copyBtn" type="button">Copy JSON</button>
+    </div>
+    <pre id="preview"></pre>
+    <ol>
+      <li>Download <code>config.json</code>.</li>
+      <li>In your GitHub repo, click <b>Add file → Upload files</b> and upload it (it replaces the old one).</li>
+      <li>Wait a minute for GitHub Pages to update, then open the chat page and hard-refresh.</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const fields = ["webhookUrl", "title", "placeholder", "welcome", "messageField", "replyField", "method", "authHeader"];
+
+  function currentConfig() {
+    const c = {};
+    fields.forEach((f) => { c[f] = $(f).value.trim(); });
+    if (!c.authHeader) delete c.authHeader;
+    return c;
+  }
+  function refreshPreview() { $("preview").textContent = JSON.stringify(currentConfig(), null, 2); }
+
+  // Load the existing config.json (if any) so the admin can edit it
+  fetch("config.json", { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((c) => {
+      if (c) fields.forEach((f) => { if (c[f] != null) $(f).value = c[f]; });
+      refreshPreview();
+    })
+    .catch(refreshPreview);
+
+  fields.forEach((f) => $(f).addEventListener("input", refreshPreview));
+
+  function extractReply(data, preferred) {
+    if (data == null) return "";
+    if (typeof data === "string") return data;
+    if (Array.isArray(data)) return data.map((x) => extractReply(x, preferred)).filter(Boolean).join("\n");
+    if (typeof data === "object") {
+      const keys = [preferred, "response", "output", "text", "reply", "message", "answer", "content"].filter(Boolean);
+      const lower = {};
+      Object.keys(data).forEach((key) => { lower[key.toLowerCase()] = key; });
+      for (const k of keys) {
+        const real = lower[String(k).toLowerCase()];
+        if (real !== undefined && data[real] != null && data[real] !== "") return extractReply(data[real], preferred);
+      }
+      return JSON.stringify(data, null, 2);
+    }
+    return String(data);
+  }
+
+  $("testBtn").addEventListener("click", async () => {
+    const c = currentConfig();
+    const status = $("testStatus"), out = $("testOut");
+    out.hidden = true;
+    if (!c.webhookUrl) { status.className = "hint err"; status.textContent = "Enter the webhook URL first."; return; }
+    status.className = "hint"; status.textContent = "Sending...";
+    $("testBtn").disabled = true;
+
+    const payload = { [c.messageField || "message"]: $("testMsg").value, sessionId: "admin-test" };
+    const headers = {};
+    if (c.authHeader) headers["Authorization"] = c.authHeader;
+    let url = c.webhookUrl;
+    const opts = { method: c.method || "POST", headers };
+    try {
+      if (opts.method === "GET") {
+        const u = new URL(url);
+        Object.entries(payload).forEach(([k, v]) => u.searchParams.set(k, v));
+        url = u.toString();
+      } else {
+        headers["Content-Type"] = "application/json";
+        opts.body = JSON.stringify(payload);
+      }
+      const res = await fetch(url, opts);
+      const raw = await res.text();
+      let data = raw; try { data = JSON.parse(raw); } catch (e) {}
+      out.hidden = false;
+      out.textContent = "HTTP " + res.status + "\n\nRaw response:\n" + raw + "\n\nReply the chat will show:\n" + extractReply(data, c.replyField);
+      status.className = res.ok ? "hint ok" : "hint err";
+      status.textContent = res.ok ? "Success." : "The webhook answered with an error.";
+    } catch (err) {
+      status.className = "hint err";
+      status.textContent = "Could not reach the webhook: " + err.message + ". Check the URL, that the workflow is active, and CORS (Webhook node → Options → Allowed Origins).";
+    } finally {
+      $("testBtn").disabled = false;
+    }
+  });
+
+  $("downloadBtn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(currentConfig(), null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "config.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  $("copyBtn").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(JSON.stringify(currentConfig(), null, 2)); $("copyBtn").textContent = "Copied!"; }
+    catch (e) { $("copyBtn").textContent = "Copy failed"; }
+    setTimeout(() => { $("copyBtn").textContent = "Copy JSON"; }, 1500);
+  });
+})();
+</script>
+</body>
+</html>

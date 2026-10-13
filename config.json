@@ -1,0 +1,9 @@
+{
+  "webhookUrl": "",
+  "title": "Chat",
+  "placeholder": "Type a message...",
+  "welcome": "Hi! How can I help you?",
+  "messageField": "message",
+  "replyField": "Response",
+  "method": "POST"
+}
