@@ -1,9 +1,9 @@
 {
-  "webhookUrl": "",
+  "webhookUrl": "https://ziadaccount3.app.n8n.cloud/webhook-test/Chatbot",
   "title": "Chat",
   "placeholder": "Type a message...",
   "welcome": "Hi! How can I help you?",
-  "messageField": "message",
+  "messageField": "Message",
   "replyField": "Response",
   "method": "POST"
 }
