@@ -1,5 +1,5 @@
 {
-  "webhookUrl": "https://ziadaccount3.app.n8n.cloud/webhook-test/Chatbot",
+  "webhookUrl": "https://ziadaccount3.app.n8n.cloud/webhook/Chatbot",
   "title": "Chat",
   "placeholder": "Type a message...",
   "welcome": "Hi! How can I help you?",
